@@ -1,0 +1,8 @@
+build/
+cmake-build-*/
+out/
+# 若可执行文件生成在源码树里再取消注释，例如：
+# /src/demo
+.cache/
+*.swp
+*~
