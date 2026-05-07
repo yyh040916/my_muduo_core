@@ -1,7 +1,6 @@
 #include <errno.h>
 #include <sys/uio.h>  // readv / iovec
 #include <unistd.h>   // write
-
 #include "Buffer.h"
 
 /**
@@ -14,14 +13,14 @@
  *
  * 这样相比“先试读、再扩容、再读”可减少系统调用次数。
  */
-ssize_t Buffer::readFd(int fd, int *saveErrno)
-{
+ ssize_t Buffer::readFd(int fd, int *saveErrno)
+ {
     // 额外栈缓冲（64KB）
     // 只在一次 readv 读入数据超过 writable 时承接“溢出部分”
     char extrabuf[65536] = {0};
 
     // iovec 描述一段可写内存
-    struct iovec vec[2];
+    struct iovec vec[2];//iovec是一个结构体，用于描述一段可写内存,包含起始地址和长度
 
     // 当前 Buffer 可写大小
     const size_t writable = writableBytes();
@@ -55,11 +54,10 @@ ssize_t Buffer::readFd(int fd, int *saveErrno)
         writerIndex_ = buffer_.size(); // 先把 vec[0] 的部分视为全部写满
         append(extrabuf, static_cast<size_t>(n) - writable); // 再把溢出追加进 buffer_
     }
-
     return n;
-}
+ }
 
-/**
+ /**
  * 把可读区数据写到 fd
  * - 写入起点：peek()（readerIndex_）
  * - 写入长度：readableBytes()
@@ -67,12 +65,12 @@ ssize_t Buffer::readFd(int fd, int *saveErrno)
  * 注意：这个函数只负责 write，不自动 retrieve。
  * 上层通常在确认写了 n 字节后，再调用 retrieve(n) 消费输出缓冲。
  */
-ssize_t Buffer::writeFd(int fd, int *saveErrno)
+ ssize_t Buffer::writeFd(int fd, int *saveErrno)
 {
-    ssize_t n = ::write(fd, peek(), readableBytes());
+    ssize_t n = ::write(fd, peek(), readableBytes());//peek()返回的是可读区起始地址，readableBytes()是可读区长度，n是写入的字节数
     if (n < 0)
     {
-        *saveErrno = errno;
+        *saveErrno = errno;//errno是错误码
     }
-    return n;
+    return n;//返回写入的字节数
 }

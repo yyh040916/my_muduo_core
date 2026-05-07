@@ -1,20 +1,14 @@
-#include "CurrentThread.h"
-
-#include <cstdio>
-#include <thread>
+#include "InetAddress.h"
+#include <iostream>
 
 int main()
 {
-    std::printf("main thread tid = %d\n", CurrentThread::tid());
-    std::printf("main again      = %d (应相同，走缓存)\n", CurrentThread::tid());
+    InetAddress a(8080, "0.0.0.0");
+    std::cout << a.toIpPort() << std::endl; // 期望类似 0.0.0.0:8080
 
-    std::thread t([]() {
-        std::printf("child thread tid = %d\n", CurrentThread::tid());
-        std::printf("child again      = %d\n", CurrentThread::tid());
-    });
+    InetAddress b(9090);
+    std::cout << b.toIpPort() << std::endl; // 默认 IP 127.0.0.1
 
-    t.join();
-
-    std::puts("若 main 与 child 的 tid 不同，说明各线程缓存独立，行为正常。");
+    std::cout << "port host order = " << b.toPort() << std::endl;
     return 0;
 }
