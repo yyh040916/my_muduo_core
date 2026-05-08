@@ -34,12 +34,16 @@ public:
     }
     /// 只返回 IP 字符串，例如 "192.168.1.1"
     std::string toIp() const;
+
     /// 返回 "ip:port"，例如 "192.168.1.1:8080"
     std::string toIpPort() const;
+
     /// 返回主机字节序的端口号（内部 sin_port 会先 ntohs）
     uint16_t toPort() const;
+
     /// 交给 bind/connect 等：需要 sockaddr_in 指针时用这个
     const sockaddr_in *getSockAddr() const { return &addr_; }
+    
     /// 少数场景需要整体替换地址（例如从别处拷贝过来）
     void setSockAddr(const sockaddr_in &addr) { addr_ = addr; }
 private:
