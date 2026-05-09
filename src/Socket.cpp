@@ -9,12 +9,14 @@
 #include "Logger.h"
 #include "InetAddress.h"
 
+//Socket的析构函数，用于关闭套接字
 Socket::~Socket()
 {
     // 关闭文件描述符：内核回收与该 fd 相关的资源；重复 close 未定义行为，故禁止拷贝 Socket
     ::close(sockfd_);
 }
 
+//Socket的bindAddress函数，用于将套接字绑定到指定的地址和端口
 void Socket::bindAddress(const InetAddress &localaddr)
 {
     // bind 需要 sockaddr*；IPv4 下 sockaddr_in* 可强转为 sockaddr*（经典写法）
@@ -26,15 +28,17 @@ void Socket::bindAddress(const InetAddress &localaddr)
     }
 }
 
+//Socket的listen函数，用于开始监听连接请求
 void Socket::listen()
 {
-    // listen: 开始监听连接请求
+    // listen: 开始监听连接请求，listen函数用于将一个套接字置于被动模式，即等待客户端的连接请求。
     if (0 != ::listen(sockfd_, 1024))//1024: 内核允许的最大未处理连接数
     {
         LOG_FATAL("listen sockfd:%d fail\n", sockfd_);
     }
 }
 
+//Socket的accept函数，用于接受客户端的连接请求
 int Socket::accept(InetAddress *peeraddr)
 {
     /*
