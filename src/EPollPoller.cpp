@@ -48,7 +48,7 @@ Timestamp EPollPoller::poll(int timeoutMs, ChannelList *activeChannels)
         LOG_INFO("%d events happend\n", numEvents);
         fillActiveChannels(numEvents, activeChannels);
         // 若就绪数和缓冲区一样大，下次可能不够，扩容以免丢事件边缘情况（内核一次返回多个）
-        if (numEvents == events_.size())
+        if (static_cast<size_t>(numEvents) == events_.size())
         {
             events_.resize(events_.size() * 2);
         }
