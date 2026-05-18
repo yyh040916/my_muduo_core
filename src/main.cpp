@@ -1,67 +1,47 @@
+#include "Acceptor.h"
 #include "EventLoop.h"
-#include "Channel.h"
-#include "Timestamp.h"
+#include "InetAddress.h"
+#include "Logger.h"
 
-#include <cassert>
 #include <cstdio>
 #include <thread>
 #include <unistd.h>
 
 int main()
 {
-    // ========== 测试 1：pipe 触发读事件，在回调里 quit ==========
-    {
-        EventLoop loop;  // 主线程创建 loop，threadId_ 即主线程 tid
+    // 日志里能看到 Acceptor / Channel / EPollPoller 的输出
+    const uint16_t port = 19090;
 
-        int fds[2];
-        assert(::pipe(fds) == 0);
-        // fds[0] 读端  fds[1] 写端
+    EventLoop loop; // 主线程的 IO 循环
 
-        Channel ch(&loop, fds[0]);
+    // reuseport 参数此处传 false 即可（与 muduo 构造行为一致）
+    Acceptor acceptor(&loop, InetAddress(port, "0.0.0.0"), false);
 
-        ch.setReadCallback([&](Timestamp) {
-            std::puts("[test1] pipe EPOLLIN -> readCallback");
-            loop.quit();  // 请求退出；下一轮 while 结束
+    acceptor.setNewConnectionCallback(
+        [&loop](int connfd, const InetAddress &peer) {
+            // 本测试不接 TcpConnection：只打印并关闭连接，然后退出 loop
+            std::printf("[main] new connection fd=%d from %s\n",
+                        connfd, peer.toIpPort().c_str());
+            ::close(connfd);
+            loop.quit(); // 结束 loop.loop()，main 才能继续
         });
 
-        ch.enableReading();  // epoll_ctl ADD 读端
+    acceptor.listen(); // 开始 listen + 把 listenfd 挂到 epoll
 
-        std::thread writer([&] {
-            ::sleep(1);           // 先让 loop.loop() 跑起来并阻塞在 poll
-            const char c = 'x';
-            ::write(fds[1], &c, 1);  // 写 1 字节 -> 读端就绪
-        });
+    std::printf("Server listening on 0.0.0.0:%u\n", static_cast<unsigned>(port));
+    std::printf("In another terminal run: nc 127.0.0.1 %u\n", static_cast<unsigned>(port));
 
-        loop.loop();  // 阻塞在此，直到 quit()
+    // 在子线程里 2 秒后自动连一次，避免你一直手动 nc（也可删掉这段改用手动 nc）
+    std::thread client([&]() {
+        ::sleep(2);
+        std::string cmd = "bash -c 'echo test | nc 127.0.0.1 " + std::to_string(port) + "'";
+        std::system(cmd.c_str());
+    });
 
-        writer.join();
-        ::close(fds[0]);
-        ::close(fds[1]);
-    }
+    loop.loop(); // 阻塞在此，直到 quit()
 
-    // ========== 测试 2：子线程 queueInLoop，验证 wakeup + pending ==========
-    {
-        EventLoop loop;
+    client.join();
 
-        std::thread other([&] {
-            ::sleep(1);
-
-            // 在 IO 线程打印（通过 pending 队列）
-            loop.queueInLoop([]() {
-                std::puts("[test2] executed on IO thread");
-            });
-
-            // 再在 IO 线程调 quit
-            loop.queueInLoop([&]() {
-                loop.quit();
-            });
-        });
-
-        loop.loop();  // IO 线程：poll 被 wakeup 后执行上面两个 functor
-
-        other.join();
-    }
-
-    std::puts("EventLoop all tests passed.");
+    std::puts("Acceptor test done.");
     return 0;
 }

@@ -14,6 +14,7 @@ add_executable(demo
   DefaultPoller.cpp
   Channel.cpp
   EventLoop.cpp
+  Acceptor.cpp
 )
 target_include_directories(demo PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(demo PRIVATE -Wall -Wextra)
