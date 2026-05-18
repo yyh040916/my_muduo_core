@@ -1,47 +1,93 @@
 #include "Acceptor.h"
 #include "EventLoop.h"
+#include "TcpConnection.h"
 #include "InetAddress.h"
+#include "Callbacks.h"
 #include "Logger.h"
 
 #include <cstdio>
-#include <thread>
+#include <cstring>
+#include <map>
+#include <memory>
 #include <unistd.h>
+#include <sys/socket.h>
+
+/// 用 getsockname 得到本端地址（与 TcpServer::newConnection 相同做法）
+static InetAddress getLocalAddr(int sockfd)
+{
+    sockaddr_in local;
+    ::memset(&local, 0, sizeof(local));
+    socklen_t len = sizeof(local);
+    if (::getsockname(sockfd, reinterpret_cast<sockaddr *>(&local), &len) < 0)
+    {
+        LOG_ERROR("getsockname failed");
+    }
+    return InetAddress(local);
+}
 
 int main()
 {
-    // 日志里能看到 Acceptor / Channel / EPollPoller 的输出
-    const uint16_t port = 19090;
+    const uint16_t port = 19191;
+    EventLoop loop;
 
-    EventLoop loop; // 主线程的 IO 循环
+    // 保存活跃连接，close 时 erase（完整 TcpServer 用 map + removeConnection）
+    std::map<std::string, TcpConnectionPtr> connections;
 
-    // reuseport 参数此处传 false 即可（与 muduo 构造行为一致）
     Acceptor acceptor(&loop, InetAddress(port, "0.0.0.0"), false);
 
     acceptor.setNewConnectionCallback(
-        [&loop](int connfd, const InetAddress &peer) {
-            // 本测试不接 TcpConnection：只打印并关闭连接，然后退出 loop
-            std::printf("[main] new connection fd=%d from %s\n",
-                        connfd, peer.toIpPort().c_str());
-            ::close(connfd);
-            loop.quit(); // 结束 loop.loop()，main 才能继续
+        [&](int connfd, const InetAddress &peerAddr) {
+            // ----- 以下仿 TcpServer::newConnection（单线程版，都在同一个 loop）-----
+
+            char buf[64];
+            snprintf(buf, sizeof(buf), "conn#%d", connfd);
+            std::string connName = buf;
+
+            InetAddress localAddr = getLocalAddr(connfd);
+
+            // 必须用 shared_ptr：enable_shared_from_this / tie / 回调里 TcpConnectionPtr
+            TcpConnectionPtr conn(new TcpConnection(
+                &loop, connName, connfd, localAddr, peerAddr));
+
+            connections[connName] = conn;
+
+            // 连接建立/断开（这里只打印；connected() 在 DOWN 时为 false）
+            conn->setConnectionCallback([](const TcpConnectionPtr &c) {
+                if (c->connected())
+                {
+                    LOG_INFO("Connection UP %s", c->name().c_str());
+                }
+                else
+                {
+                    LOG_INFO("Connection DOWN %s", c->name().c_str());
+                }
+            });
+
+            // 收到数据：echo 回去（与 muduo testserver 相同写法）
+            conn->setMessageCallback(
+                [](const TcpConnectionPtr &c, Buffer *buf, Timestamp) {
+                    std::string msg = buf->retrieveAllAsString();
+                    LOG_INFO("recv from %s: %s", c->peerAddress().toIpPort().c_str(), msg.c_str());
+                    c->send(msg);
+                });
+
+            // 关闭时从 map 删除（完整版还会 connectDestroyed）
+            conn->setCloseCallback([&](const TcpConnectionPtr &c) {
+                LOG_INFO("CloseCallback %s", c->name().c_str());
+                connections.erase(c->name());
+            });
+
+            // 必须在 IO 线程里：tie + enableReading + connectionCallback
+            loop.runInLoop(std::bind(&TcpConnection::connectEstablished, conn));
         });
 
-    acceptor.listen(); // 开始 listen + 把 listenfd 挂到 epoll
+    acceptor.listen();
 
-    std::printf("Server listening on 0.0.0.0:%u\n", static_cast<unsigned>(port));
-    std::printf("In another terminal run: nc 127.0.0.1 %u\n", static_cast<unsigned>(port));
+    std::printf("Echo server on 0.0.0.0:%u — use: nc 127.0.0.1 %u\n",
+                static_cast<unsigned>(port), static_cast<unsigned>(port));
 
-    // 在子线程里 2 秒后自动连一次，避免你一直手动 nc（也可删掉这段改用手动 nc）
-    std::thread client([&]() {
-        ::sleep(2);
-        std::string cmd = "bash -c 'echo test | nc 127.0.0.1 " + std::to_string(port) + "'";
-        std::system(cmd.c_str());
-    });
+    loop.loop();  // 阻塞：accept -> handleRead -> newConnection 回调 -> poll -> handleRead -> echo
 
-    loop.loop(); // 阻塞在此，直到 quit()
-
-    client.join();
-
-    std::puts("Acceptor test done.");
+    std::puts("EventLoop quit, main exit.");
     return 0;
 }

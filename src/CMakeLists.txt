@@ -15,6 +15,7 @@ add_executable(demo
   Channel.cpp
   EventLoop.cpp
   Acceptor.cpp
+  TcpConnection.cpp
 )
 target_include_directories(demo PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(demo PRIVATE -Wall -Wextra)
