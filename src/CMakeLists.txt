@@ -16,6 +16,10 @@ add_executable(demo
   EventLoop.cpp
   Acceptor.cpp
   TcpConnection.cpp
+  Thread.cpp
+  EventLoopThread.cpp
+  EventLoopThreadPool.cpp
+  TcpServer.cpp
 )
 target_include_directories(demo PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(demo PRIVATE -Wall -Wextra)
